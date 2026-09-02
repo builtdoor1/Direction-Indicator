@@ -17,31 +17,21 @@ import org.joml.Vector3fc;
 
 /**
  * Draws one flat, camera-facing bar above the head of every player
- * {@link DirectionIndicatorClient#isRelevant} accepts. The colour is decided in
+ * {@link DirectionIndicatorClient#shouldDrawIndicator} accepts. The colour is decided in
  * {@link DirectionIndicatorClient}; this class only decides where the quad goes.
+ *
+ * <p>Registered on {@code WorldRenderEvents.END_MAIN}, which fires inside the main render pass
+ * immediately before the world renderer's own {@code endBatch()}.
  */
 public final class IndicatorRenderer {
 
-	/** Bar size in blocks. A player is 0.6 wide, so this sits just inside their silhouette. */
-	private static final double WIDTH = 0.55;
-	private static final double HEIGHT = 0.11;
-
-	/** How far the dark backdrop extends past the coloured fill on every side. */
+	/** How far the dark backdrop extends past the coloured fill on every side, in blocks. */
 	private static final double BORDER = 0.022;
-
-	/**
-	 * Height above the top of the player's hitbox. Vanilla puts the nametag at
-	 * {@code bbHeight + 0.5}, so this tucks the bar into the gap below it.
-	 */
-	private static final double HEAD_CLEARANCE = 0.30;
-
-	private static final int FILL_ALPHA = 235;
-	private static final int BACKDROP_ALPHA = 140;
 
 	private IndicatorRenderer() {
 	}
 
-	/** Registered as a {@code WorldRenderEvents.BEFORE_DEBUG_RENDER} callback. */
+	/** Registered as a {@code WorldRenderEvents.END_MAIN} callback. */
 	public static void render(WorldRenderContext context) {
 		Minecraft mc = Minecraft.getInstance();
 		ClientLevel level = mc.level;
@@ -56,21 +46,31 @@ public final class IndicatorRenderer {
 			return;
 		}
 
+		DirectionIndicatorConfig config = DirectionIndicatorConfig.get();
 		Camera camera = mc.gameRenderer.getMainCamera();
 		Vec3 camPos = camera.position();
 		Vec3 up = vec(camera.upVector());
 		Vec3 right = vec(camera.leftVector()).scale(-1.0);
 
+		double halfWidth = config.barWidth / 200.0;
+		double halfHeight = config.barHeight / 200.0;
+		double clearance = config.headClearance / 100.0;
+
 		float partialTick = mc.getDeltaTracker().getGameTimeDeltaPartialTick(false);
 		Matrix4f matrix = poseStack.last().pose();
 
-		// debugQuads() is POSITION_COLOR quads, translucent, with no depth write and no
-		// back-face culling. That means the backdrop and the fill can share a plane and
-		// simply draw in submission order, and the winding of each quad doesn't matter.
+		// debugQuads() is POSITION_COLOR quads, translucent, with no depth write and no back-face
+		// culling. That means the backdrop and the fill can share a plane and simply draw in
+		// submission order, and the winding of each quad doesn't matter.
 		VertexConsumer buffer = consumers.getBuffer(RenderTypes.debugQuads());
 
 		for (AbstractClientPlayer player : level.players()) {
-			if (!DirectionIndicatorClient.isRelevant(self, player)) {
+			if (!DirectionIndicatorClient.shouldDrawIndicator(self, player)) {
+				continue;
+			}
+			// Your own bar sits directly above the first-person camera, where it would be a
+			// degenerate sliver on the near plane. Only draw it when the camera is detached (F5).
+			if (player == self && !camera.isDetached()) {
 				continue;
 			}
 
@@ -78,12 +78,12 @@ public final class IndicatorRenderer {
 			double x = Mth.lerp(partialTick, player.xo, player.getX());
 			double y = Mth.lerp(partialTick, player.yo, player.getY());
 			double z = Mth.lerp(partialTick, player.zo, player.getZ());
-			Vec3 center = new Vec3(x, y + player.getBbHeight() + HEAD_CLEARANCE, z).subtract(camPos);
+			Vec3 center = new Vec3(x, y + player.getBbHeight() + clearance, z).subtract(camPos);
 
 			quad(buffer, matrix, center, right, up,
-					WIDTH / 2.0 + BORDER, HEIGHT / 2.0 + BORDER, 0x000000, BACKDROP_ALPHA);
+					halfWidth + BORDER, halfHeight + BORDER, 0x000000, config.backdropOpacity);
 			quad(buffer, matrix, center, right, up,
-					WIDTH / 2.0, HEIGHT / 2.0, DirectionIndicatorClient.indicatorColor(player), FILL_ALPHA);
+					halfWidth, halfHeight, DirectionIndicatorClient.indicatorColor(player), config.fillOpacity);
 		}
 	}
 

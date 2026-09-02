@@ -18,61 +18,35 @@ import net.minecraft.sounds.SoundSource;
  * Client-side movement cues for nearby players:
  *
  * <ol>
- *   <li>a sound the moment a player starts a jump;</li>
+ *   <li>a sound the moment another player starts a jump;</li>
  *   <li>a flat, camera-facing bar above their head coloured by whether they are moving
  *       forward, backward, or not meaningfully moving.</li>
  * </ol>
  *
- * Both features use the same {@link #RADIUS}. All per-player bookkeeping happens once per
- * client tick in here, so {@link IndicatorRenderer} stays a pure drawing pass.
+ * Both features share {@link DirectionIndicatorConfig#radius}. All per-player bookkeeping happens
+ * once per client tick in here, so {@link IndicatorRenderer} stays a pure drawing pass.
  */
 public final class DirectionIndicatorClient implements ClientModInitializer {
 
-	// ------------------------------------------------------------------
-	// Configuration. Everything worth tweaking lives in this block.
-	// ------------------------------------------------------------------
-
-	/** Players further than this many blocks away are ignored by both cues. */
-	public static final double RADIUS = 24.0;
-
-	/** Whether your own jumps and your own indicator count too. */
-	public static final boolean INCLUDE_SELF = true;
-
 	/** Placeholder jump cue. Any plain {@code SoundEvent} constant can go here. */
 	private static final SoundEvent JUMP_SOUND = SoundEvents.EXPERIENCE_ORB_PICKUP;
-	private static final float JUMP_VOLUME = 0.6F;
-	private static final float JUMP_PITCH = 1.6F;
 
-	/** Indicator colours, 0xRRGGBB. */
-	public static final int COLOR_FORWARD = 0x4CD964;
-	public static final int COLOR_BACKWARD = 0xE03131;
-	public static final int COLOR_IDLE = 0xFFD43B;
-
-	/**
-	 * Speed along the player's facing, in blocks per tick, below which they read as "not
-	 * meaningfully moving". Sneaking is about 0.065, walking 0.216, sprinting 0.28, so this
-	 * only swallows drift. Pure strafing has almost no forward component and reads idle too.
-	 */
-	private static final double MOVE_THRESHOLD = 0.02;
-
-	/** Exponential smoothing on that speed, so a single dropped position packet can't flicker the colour. */
+	/** Exponential smoothing on forward speed, so a dropped position packet can't flicker the colour. */
 	private static final double SMOOTHING = 0.45;
 
 	/** Horizontal steps larger than this (squared, blocks per tick) are teleports, not movement. */
 	private static final double TELEPORT_SQR = 16.0;
 
 	/**
-	 * A jump is "left the ground, then gained height". Remote players arrive interpolated
-	 * over a few ticks, so the height gain is given this many ticks to show up before the
-	 * candidate is discarded as a step off a ledge.
+	 * A jump is "left the ground, then gained height". Remote players arrive interpolated over a few
+	 * ticks, so the height gain is given a short window to show up before the candidate is discarded
+	 * as a step off a ledge.
 	 */
 	private static final double JUMP_MIN_RISE = 0.1;
 	private static final int JUMP_CONFIRM_TICKS = 4;
 
 	/** Ticks after a jump before another can fire. A jump arc is ~12 ticks, so this only eats flicker. */
 	private static final int JUMP_COOLDOWN_TICKS = 6;
-
-	// ------------------------------------------------------------------
 
 	/** Per-player state, keyed by entity id. */
 	private static final class Tracked {
@@ -94,9 +68,18 @@ public final class DirectionIndicatorClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
+		// Create the config file up front so it exists before Mod Menu can open it.
+		DirectionIndicatorConfig.get();
+
 		ClientTickEvents.END_CLIENT_TICK.register(DirectionIndicatorClient::onEndTick);
-		// Drawn with the debug-render pass, the phase Fabric intends for overlay content.
-		WorldRenderEvents.BEFORE_DEBUG_RENDER.register(IndicatorRenderer::render);
+
+		// END_MAIN, not BEFORE_DEBUG_RENDER. In fabric-rendering-v1 16.2.x BEFORE_DEBUG_RENDER is the
+		// one "drawing" event injected into the extraction region of renderLevel, before the frame
+		// graph is even built - so it hands out the previous frame's PoseStack and opens a batch
+		// outside any executing pass. END_MAIN fires inside the main pass, immediately before the
+		// world renderer's own endBatch(), which is what Fabric's own docs recommend for content that
+		// must not be overdrawn or cleared.
+		WorldRenderEvents.END_MAIN.register(IndicatorRenderer::render);
 	}
 
 	private static void onEndTick(Minecraft mc) {
@@ -118,6 +101,7 @@ public final class DirectionIndicatorClient implements ClientModInitializer {
 	}
 
 	private static void track(ClientLevel level, LocalPlayer self, AbstractClientPlayer player) {
+		DirectionIndicatorConfig config = DirectionIndicatorConfig.get();
 		boolean onGround = player.onGround();
 		double x = player.getX();
 		double y = player.getY();
@@ -166,8 +150,10 @@ public final class DirectionIndicatorClient implements ClientModInitializer {
 		if (t.confirmTicks > 0) {
 			if (y - t.takeoffY >= JUMP_MIN_RISE) {
 				// Gained height while airborne, so it was a jump.
-				if (t.cooldown == 0 && isRelevant(self, player)) {
-					level.playLocalSound(x, y, z, JUMP_SOUND, SoundSource.PLAYERS, JUMP_VOLUME, JUMP_PITCH, false);
+				if (t.cooldown == 0 && config.jumpSoundEnabled && inRange(self, player)
+						&& (player != self || config.jumpSoundForSelf)) {
+					level.playLocalSound(x, y, z, JUMP_SOUND, SoundSource.PLAYERS,
+							config.jumpSoundVolume / 100.0F, config.jumpSoundPitch / 100.0F, false);
 				}
 				t.cooldown = JUMP_COOLDOWN_TICKS;
 				t.confirmTicks = 0;
@@ -182,23 +168,34 @@ public final class DirectionIndicatorClient implements ClientModInitializer {
 		t.lastZ = z;
 	}
 
-	/** Whether this player is close enough, and visible enough, to get either cue. */
-	public static boolean isRelevant(LocalPlayer self, AbstractClientPlayer player) {
-		if (player == self && !INCLUDE_SELF) {
-			return false;
-		}
+	/** Close enough, and alive enough, to be worth a cue at all. */
+	private static boolean inRange(LocalPlayer self, AbstractClientPlayer player) {
 		if (player.isSpectator() || !player.isAlive()) {
 			return false;
 		}
-		return self.distanceToSqr(player) <= RADIUS * RADIUS;
+		int radius = DirectionIndicatorConfig.get().radius;
+		return self.distanceToSqr(player) <= (double) radius * radius;
+	}
+
+	/** Whether this player should get a direction bar drawn above their head. */
+	public static boolean shouldDrawIndicator(LocalPlayer self, AbstractClientPlayer player) {
+		DirectionIndicatorConfig config = DirectionIndicatorConfig.get();
+		if (!config.indicatorEnabled) {
+			return false;
+		}
+		if (player == self && !config.indicatorForSelf) {
+			return false;
+		}
+		return inRange(self, player);
 	}
 
 	/** Indicator colour (0xRRGGBB) for a player. Untracked players read as idle. */
 	public static int indicatorColor(AbstractClientPlayer player) {
+		DirectionIndicatorConfig config = DirectionIndicatorConfig.get();
 		Tracked t = TRACKED.get(player.getId());
-		if (t == null || Math.abs(t.forwardSpeed) < MOVE_THRESHOLD) {
-			return COLOR_IDLE;
+		if (t == null || Math.abs(t.forwardSpeed) < config.moveThreshold / 1000.0) {
+			return config.colorIdle;
 		}
-		return t.forwardSpeed > 0.0 ? COLOR_FORWARD : COLOR_BACKWARD;
+		return t.forwardSpeed > 0.0 ? config.colorForward : config.colorBackward;
 	}
 }

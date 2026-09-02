@@ -6,7 +6,7 @@ A client-side [Fabric](https://fabricmc.net/) mod for **Minecraft 1.21.11**. By 
 
 A flat bar floats above every nearby player's head and turns **green** when they are moving
 forward, **red** when they are backpedalling and **yellow** when they are not meaningfully
-moving. A sound plays the moment any nearby player jumps.
+moving. A sound plays the moment a nearby player jumps.
 
 Client-side only. It does not talk to the server, and it works on any server you can already
 join.
@@ -28,10 +28,10 @@ Strafing is almost entirely sideways, so it reads yellow. The bar always faces y
 above the head and just below the nametag, and is drawn behind terrain rather than through it.
 
 **Jump sound.** A short cue fires once, on the tick a nearby player starts a jump. It does not
-repeat while they are in the air, and stepping off a ledge is not a jump.
+repeat while they are in the air, and stepping off a ledge is not a jump. By default it plays
+only for *other* players, not for your own jumps.
 
-Both features use the same radius, 24 blocks by default, and both include you as well as
-everyone else.
+Both features use the same radius, 24 blocks by default.
 
 ---
 
@@ -39,28 +39,47 @@ everyone else.
 
 1. [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.3 or newer, for Minecraft 1.21.11.
 2. [Fabric API](https://modrinth.com/mod/fabric-api).
-3. Drop `direction-indicator-1.0.0.jar` from [Releases](https://github.com/builtdoor1/Direction-Indicator/releases) into your `mods` folder.
+3. Drop `direction-indicator-1.1.0.jar` from [Releases](https://github.com/builtdoor1/Direction-Indicator/releases) into your `mods` folder.
 
 Java 21 is required, which is what the 1.21.11 launcher already uses.
+
+Optional, for the settings screen: [Mod Menu](https://modrinth.com/mod/modmenu) and
+[Cloth Config](https://modrinth.com/mod/cloth-config). The mod runs fine without either, it just
+uses the defaults and the JSON file.
 
 ---
 
 ## Settings
 
-There is no config screen and no keybind on purpose. Everything is a constant at the top of
-[`DirectionIndicatorClient.java`](src/main/java/direction/indicator/DirectionIndicatorClient.java):
+With Mod Menu and Cloth Config installed, open **Mods → Direction Indicator → Configure**.
+Otherwise edit `config/directionindicator.json`, which is written on first launch.
 
-| Constant | Default | What it does |
+**General**
+
+| Setting | Default | What it does |
 |---|---|---|
-| `RADIUS` | `24.0` | Blocks. Governs both the bar and the jump sound. |
-| `INCLUDE_SELF` | `true` | Whether your own jumps and your own bar count. |
-| `JUMP_SOUND` | `EXPERIENCE_ORB_PICKUP` | Any plain `SoundEvent` constant. |
-| `JUMP_VOLUME` / `JUMP_PITCH` | `0.6` / `1.6` | |
-| `COLOR_FORWARD` / `COLOR_BACKWARD` / `COLOR_IDLE` | green / red / yellow | `0xRRGGBB`. |
-| `MOVE_THRESHOLD` | `0.02` | Blocks per tick along the facing below which a player reads as idle. Sneaking is about `0.065`, walking `0.216`, sprinting `0.28`. |
+| Radius | 24 | Blocks. Used by both the jump sound and the bar. |
 
-Bar size, border and how far it floats above the head live in
-[`IndicatorRenderer.java`](src/main/java/direction/indicator/IndicatorRenderer.java).
+**Jump Sound**
+
+| Setting | Default | What it does |
+|---|---|---|
+| Enabled | on | |
+| Play for your own jumps | **off** | Leave off to hear only other players jump. |
+| Volume | 60% | |
+| Pitch | 160% | |
+
+**Direction Bar**
+
+| Setting | Default | What it does |
+|---|---|---|
+| Enabled | on | |
+| Show above yourself | off | Only visible in third person (F5). Handy for checking the mod works. |
+| Moving forward / backward / not moving | green / red / yellow | |
+| Movement threshold | 20/1000 blocks per tick | Below this the bar reads as idle. Sneaking is ~65, walking ~216, sprinting ~280. |
+| Width / Height | 55 / 11 hundredths of a block | |
+| Height above head | 30 hundredths of a block | Tucks the bar between the head and the nametag. |
+| Fill / Backdrop opacity | 235 / 140 | Out of 255. |
 
 ---
 
@@ -83,10 +102,18 @@ window, and the cue fires once the player has actually gained height while still
 is instant for you, tolerant of interpolation for everyone else, and still rejects walking off a
 ledge, where height only ever decreases.
 
-**Drawing the bar.** `RenderTypes.debugQuads()` gives `POSITION_COLOR` quads with translucent
+**Drawing the bar.** The quad is built from the camera's own up and right vectors, which is what
+makes it face you, and uses `RenderTypes.debugQuads()`: `POSITION_COLOR` quads with translucent
 blending, no depth write and no back-face culling, so the dark backdrop and the coloured fill can
-share a plane and simply draw in order. The quad is built from the camera's own up and right
-vectors, which is what makes it face you.
+share a plane and simply draw in order.
+
+It is drawn on `WorldRenderEvents.END_MAIN`. That matters more than it looks. In
+fabric-rendering-v1 16.2.x, `BEFORE_DEBUG_RENDER` is the one "drawing" event injected into the
+*extraction* region of `renderLevel`, before the frame graph is even built, so a callback there is
+handed the previous frame's `PoseStack` and opens a vertex batch outside any executing render
+pass. `END_MAIN` fires inside the main pass, immediately before the world renderer's own
+`endBatch()`, which is the phase Fabric's own documentation points at for content that must not be
+overdrawn or cleared.
 
 ---
 
