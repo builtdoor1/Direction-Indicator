@@ -1,0 +1,28 @@
+{
+	"schemaVersion": 1,
+	"id": "directionindicator",
+	"version": "${version}",
+	"name": "Direction Indicator",
+	"description": "Shows which way nearby players are moving. A flat, camera-facing bar above each player's head turns green when they move forward, red when they backpedal and yellow when they aren't meaningfully moving, and a sound plays the moment any nearby player jumps. Entirely client-side.",
+	"authors": [
+		"builtdoor"
+	],
+	"contact": {
+		"homepage": "https://github.com/builtdoor1/Direction-Indicator",
+		"sources": "https://github.com/builtdoor1/Direction-Indicator",
+		"issues": "https://github.com/builtdoor1/Direction-Indicator/issues"
+	},
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"direction.indicator.DirectionIndicatorClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
