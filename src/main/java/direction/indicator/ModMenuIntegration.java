@@ -61,6 +61,13 @@ public final class ModMenuIntegration implements ModMenuApi {
 					.setSaveConsumer(v -> config.jumpSoundPitch = v)
 					.build());
 
+			sound.addEntry(entry.startIntSlider(Component.literal("Ignore knockback for"), config.knockbackWindow, 0, 40)
+					.setDefaultValue(10)
+					.setTextGetter(v -> Component.literal(v == 0 ? "off" : v + " ticks"))
+					.setTooltip(Component.literal("After a player is hit while standing, ignore their next launch for this long, so knockback doesn't sound like a jump. Cleared the moment they land. 0 turns it off."))
+					.setSaveConsumer(v -> config.knockbackWindow = v)
+					.build());
+
 			ConfigCategory bar = builder.getOrCreateCategory(Component.literal("Direction Bar"));
 			bar.addEntry(entry.startBooleanToggle(Component.literal("Enabled"), config.indicatorEnabled)
 					.setDefaultValue(true)

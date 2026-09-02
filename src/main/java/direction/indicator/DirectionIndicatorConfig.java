@@ -39,6 +39,11 @@ public final class DirectionIndicatorConfig {
 	public int jumpSoundVolume = 60;
 	/** Percent. */
 	public int jumpSoundPitch = 160;
+	/**
+	 * Ticks of suppression after a grounded player is hit, so knockback doesn't read as a jump.
+	 * 0 disables it. Cleared as soon as they land, so a longer value costs nothing.
+	 */
+	public int knockbackWindow = 10;
 
 	// --- direction bar ---
 	public boolean indicatorEnabled = true;
@@ -101,6 +106,7 @@ public final class DirectionIndicatorConfig {
 		radius = Mth.clamp(radius, 1, 128);
 		jumpSoundVolume = Mth.clamp(jumpSoundVolume, 0, 200);
 		jumpSoundPitch = Mth.clamp(jumpSoundPitch, 50, 200);
+		knockbackWindow = Mth.clamp(knockbackWindow, 0, 40);
 		colorForward &= 0xFFFFFF;
 		colorBackward &= 0xFFFFFF;
 		colorIdle &= 0xFFFFFF;

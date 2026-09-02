@@ -31,6 +31,9 @@ above the head and just below the nametag, and is drawn behind terrain rather th
 repeat while they are in the air, and stepping off a ledge is not a jump. By default it plays
 only for *other* players, not for your own jumps.
 
+Knockback does not count as a jump. Getting hit launches a grounded player upward almost exactly as
+hard as a jump does, so on a PvP server the cue would otherwise fire on every hit.
+
 Both features use the same radius, 24 blocks by default.
 
 ---
@@ -39,7 +42,7 @@ Both features use the same radius, 24 blocks by default.
 
 1. [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.3 or newer, for Minecraft 1.21.11.
 2. [Fabric API](https://modrinth.com/mod/fabric-api).
-3. Drop `direction-indicator-1.1.0.jar` from [Releases](https://github.com/builtdoor1/Direction-Indicator/releases) into your `mods` folder.
+3. Drop `direction-indicator-1.1.1.jar` from [Releases](https://github.com/builtdoor1/Direction-Indicator/releases) into your `mods` folder.
 
 Java 21 is required, which is what the 1.21.11 launcher already uses.
 
@@ -68,6 +71,7 @@ Otherwise edit `config/directionindicator.json`, which is written on first launc
 | Play for your own jumps | **off** | Leave off to hear only other players jump. |
 | Volume | 60% | |
 | Pitch | 160% | |
+| Ignore knockback for | 10 ticks | After a player is hit while standing, ignore their next launch for this long. Cleared the moment they land, so a larger value costs very little. 0 turns it off. |
 
 **Direction Bar**
 
@@ -101,6 +105,21 @@ tick therefore misses other people's jumps. Instead, leaving the ground arms a s
 window, and the cue fires once the player has actually gained height while still airborne. That
 is instant for you, tolerant of interpolation for everyone else, and still rejects walking off a
 ledge, where height only ever decreases.
+
+**Ignoring knockback.** A hit launches a grounded victim at `min(0.4, vy/2 + 0.4)` = 0.4, against a
+jump's 0.42. Through the ~3-tick interpolation those are the same number, so velocity cannot separate
+them. The mod keys off the hurt animation instead: `handleDamageEvent` sets `hurtTime` on every
+tracking client, so a launch that begins just after a hit is knockback.
+
+Two details stop that from silencing every jump in a fight. Only a hit landing on a *grounded* player
+can launch them, so nothing is suppressed while they are already airborne. And landing clears the
+suppression, because every genuine jump after a hit has a landing in between and a knockback launch
+never does.
+
+The limits are worth stating: a jump made on the *same tick* as a hit, the classic jump reset, is
+genuinely indistinguishable from pure knockback on the client and will be suppressed. And launches
+that deal no damage at all, such as wind charges and fishing rod pulls, set no `hurtTime` and will
+still ping.
 
 **Drawing the bar.** The quad is built from the camera's own up and right vectors, which is what
 makes it face you, and uses `RenderTypes.debugQuads()`: `POSITION_COLOR` quads with translucent

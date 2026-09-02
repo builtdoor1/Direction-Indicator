@@ -60,6 +60,9 @@ public final class DirectionIndicatorClient implements ClientModInitializer {
 		int confirmTicks;
 		double takeoffY;
 		int cooldown;
+		/** Ticks left during which a launch reads as knockback rather than a jump. */
+		int knockbackTicks;
+		int prevHurtTime;
 		int seenTick;
 	}
 
@@ -113,6 +116,7 @@ public final class DirectionIndicatorClient implements ClientModInitializer {
 			// first comparison can't manufacture a jump or a burst of movement.
 			t = new Tracked();
 			t.onGround = onGround;
+			t.prevHurtTime = player.hurtTime;
 			t.lastX = x;
 			t.lastY = y;
 			t.lastZ = z;
@@ -134,6 +138,37 @@ public final class DirectionIndicatorClient implements ClientModInitializer {
 		double forwardNow = dx * -Math.sin(yaw) + dz * Math.cos(yaw);
 		t.forwardSpeed += (forwardNow - t.forwardSpeed) * SMOOTHING;
 
+		// --- Was a launch caused by a hit rather than a jump? ---
+		// Knockback launches a grounded victim at 0.4 against a jump's 0.42, which interpolation makes
+		// indistinguishable, so this keys off the hurt animation instead: LivingEntity.handleDamageEvent
+		// sets hurtTime on every tracking client and it ticks down from there. That covers zero-damage
+		// projectiles too, though launches that deal no damage at all - wind charges, fishing rods -
+		// stay invisible to it and still ping.
+		//
+		// Two things stop this from silencing every jump in a fight. Only a hit landing on a GROUNDED
+		// player can launch them, so nothing is armed while they are already airborne. And landing
+		// clears it: every real jump after a hit has a landing in between, a knockback launch never
+		// does, which is why the window length barely matters.
+		//
+		// A hit is "fresh" on the tick it lands, normally a rising edge in hurtTime. Servers running
+		// 1.8-style combat land hits faster than it decays and pin it at hurtDuration, so treat that
+		// as fresh too or the edge would never fire there. Both tests need hurtTime > 0: hurtDuration
+		// is also 0 on a player who has never been hit.
+		boolean freshHit = player.hurtTime > 0
+				&& (player.hurtTime > t.prevHurtTime || player.hurtTime >= player.hurtDuration);
+		t.prevHurtTime = player.hurtTime;
+
+		if (onGround && !t.onGround) {
+			// Landed. Whatever this hit was going to launch, it already has. A jump from here is
+			// their own, which is what keeps the window from silencing every jump in a fight.
+			t.knockbackTicks = 0;
+		}
+		if (config.knockbackWindow > 0 && onGround && freshHit) {
+			t.knockbackTicks = config.knockbackWindow;
+		} else if (t.knockbackTicks > 0) {
+			t.knockbackTicks--;
+		}
+
 		// --- Did they just start a jump? ---
 		if (t.cooldown > 0) {
 			t.cooldown--;
@@ -150,8 +185,8 @@ public final class DirectionIndicatorClient implements ClientModInitializer {
 		if (t.confirmTicks > 0) {
 			if (y - t.takeoffY >= JUMP_MIN_RISE) {
 				// Gained height while airborne, so it was a jump.
-				if (t.cooldown == 0 && config.jumpSoundEnabled && inRange(self, player)
-						&& (player != self || config.jumpSoundForSelf)) {
+				if (t.cooldown == 0 && t.knockbackTicks == 0 && config.jumpSoundEnabled
+						&& inRange(self, player) && (player != self || config.jumpSoundForSelf)) {
 					level.playLocalSound(x, y, z, JUMP_SOUND, SoundSource.PLAYERS,
 							config.jumpSoundVolume / 100.0F, config.jumpSoundPitch / 100.0F, false);
 				}
