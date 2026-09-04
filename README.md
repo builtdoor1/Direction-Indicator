@@ -27,7 +27,8 @@ against the direction they are looking:
 Strafing is almost entirely sideways, so it reads yellow. The bar always faces you, sits just
 above the head and just below the nametag, and is drawn behind terrain rather than through it.
 
-**Jump sound.** A short cue fires once, on the tick a nearby player starts a jump. It does not
+**Jump sound.** A short custom cue fires once, on the tick a nearby player starts a jump. It is
+positional, so it comes from the direction that player is in and gets quieter with distance. It does not
 repeat while they are in the air, and stepping off a ledge is not a jump. By default it plays
 only for *other* players, not for your own jumps.
 
@@ -42,7 +43,7 @@ Both features use the same radius, 24 blocks by default.
 
 1. [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.3 or newer, for Minecraft 1.21.11.
 2. [Fabric API](https://modrinth.com/mod/fabric-api).
-3. Drop `direction-indicator-1.1.1.jar` from [Releases](https://github.com/builtdoor1/Direction-Indicator/releases) into your `mods` folder.
+3. Drop `direction-indicator-1.2.0.jar` from [Releases](https://github.com/builtdoor1/Direction-Indicator/releases) into your `mods` folder.
 
 Java 21 is required, which is what the 1.21.11 launcher already uses.
 
@@ -105,6 +106,14 @@ tick therefore misses other people's jumps. Instead, leaving the ground arms a s
 window, and the cue fires once the player has actually gained height while still airborne. That
 is instant for you, tolerant of interpolation for everyone else, and still rejects walking off a
 ledge, where height only ever decreases.
+
+**The cue is mono on purpose.** Minecraft only applies 3D positional attenuation to mono sounds; a
+stereo file plays at flat volume regardless of where the emitter is. Since the whole value of the cue
+is hearing *where* someone jumped, the bundled `jump_cue.ogg` is a mono downmix.
+
+The sound is not registered in `BuiltInRegistries.SOUND_EVENT`. A locally played sound is resolved by
+`SoundManager.getSoundEvent(location)` straight out of `sounds.json`, and the registry only matters
+for sounds the server asks a client to play by id, which never happens here.
 
 **Ignoring knockback.** A hit launches a grounded victim at `min(0.4, vy/2 + 0.4)` = 0.4, against a
 jump's 0.42. Through the ~3-tick interpolation those are the same number, so velocity cannot separate

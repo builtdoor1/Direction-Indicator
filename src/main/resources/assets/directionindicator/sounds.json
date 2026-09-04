@@ -1,0 +1,10 @@
+{
+	"jump_cue": {
+		"subtitle": "subtitles.directionindicator.jump_cue",
+		"sounds": [
+			{
+				"name": "directionindicator:jump_cue"
+			}
+		]
+	}
+}

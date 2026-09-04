@@ -10,8 +10,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvent;
-import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 
 /**
@@ -28,8 +28,18 @@ import net.minecraft.sounds.SoundSource;
  */
 public final class DirectionIndicatorClient implements ClientModInitializer {
 
-	/** Placeholder jump cue. Any plain {@code SoundEvent} constant can go here. */
-	private static final SoundEvent JUMP_SOUND = SoundEvents.EXPERIENCE_ORB_PICKUP;
+	/**
+	 * The bundled jump cue, {@code assets/directionindicator/sounds/jump_cue.ogg}, declared in
+	 * {@code sounds.json}. It deliberately isn't added to {@code BuiltInRegistries.SOUND_EVENT}:
+	 * a sound played locally is resolved by {@code SoundManager.getSoundEvent(location)} straight
+	 * from sounds.json, and the registry only matters for sounds the server asks for by id.
+	 *
+	 * <p>The file is mono on purpose. Minecraft only applies 3D positional attenuation to mono
+	 * sounds, so a stereo cue would play at flat volume no matter where the other player is,
+	 * which would lose the direction the cue exists to convey.
+	 */
+	private static final SoundEvent JUMP_SOUND = SoundEvent.createVariableRangeEvent(
+			Identifier.fromNamespaceAndPath("directionindicator", "jump_cue"));
 
 	/** Exponential smoothing on forward speed, so a dropped position packet can't flicker the colour. */
 	private static final double SMOOTHING = 0.45;
