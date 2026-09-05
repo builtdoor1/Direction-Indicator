@@ -13,6 +13,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.Mth;
 
 /**
  * Client-side movement cues for nearby players:
@@ -63,6 +64,8 @@ public final class DirectionIndicatorClient implements ClientModInitializer {
 		double lastX;
 		double lastY;
 		double lastZ;
+		/** Previous tick's hitbox height, so a pose change can be interpolated instead of snapping. */
+		double lastHeight;
 		boolean onGround;
 		/** Smoothed speed along the player's facing, blocks per tick. Positive is forward. */
 		double forwardSpeed;
@@ -127,6 +130,7 @@ public final class DirectionIndicatorClient implements ClientModInitializer {
 			t = new Tracked();
 			t.onGround = onGround;
 			t.prevHurtTime = player.hurtTime;
+			t.lastHeight = player.getBbHeight();
 			t.lastX = x;
 			t.lastY = y;
 			t.lastZ = z;
@@ -208,9 +212,24 @@ public final class DirectionIndicatorClient implements ClientModInitializer {
 		}
 
 		t.onGround = onGround;
+		t.lastHeight = player.getBbHeight();
 		t.lastX = x;
 		t.lastY = y;
 		t.lastZ = z;
+	}
+
+	/**
+	 * The player's hitbox height, interpolated across the tick.
+	 *
+	 * <p>{@code getBbHeight()} is swapped wholesale the moment the synced pose changes, so a player
+	 * toggling sneak drops it from 1.8 to 1.5 in one step. Anything positioned off it snaps 0.3
+	 * blocks, several times a second while someone is sneak-spamming in a fight, even though the
+	 * model's own crouch is animated smoothly.
+	 */
+	public static double interpolatedHeight(AbstractClientPlayer player, float partialTick) {
+		double now = player.getBbHeight();
+		Tracked t = TRACKED.get(player.getId());
+		return t == null ? now : Mth.lerp(partialTick, t.lastHeight, now);
 	}
 
 	/** Close enough, and alive enough, to be worth a cue at all. */

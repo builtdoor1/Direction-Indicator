@@ -28,6 +28,21 @@ public final class IndicatorRenderer {
 	/** How far the dark backdrop extends past the coloured fill on every side, in blocks. */
 	private static final double BORDER = 0.022;
 
+	/**
+	 * How far the coloured fill is pulled toward the camera, in blocks, to force its draw order.
+	 *
+	 * <p>{@code debugQuads()} is declared {@code sortOnUpload()}, so {@code endBatch} re-sorts the
+	 * whole batch back-to-front by quad centroid every frame. The backdrop and the fill are coplanar
+	 * and their centroids are derived the same way, making the sort key an exact tie - which float
+	 * rounding then breaks arbitrarily. Because the coordinates are camera-relative the rounding
+	 * changes every frame that anything moves, so on a fraction of frames the black backdrop sorted
+	 * last and composited over the fill, darkening the bar. That read as flicker, and only while
+	 * moving. Two millimetres of parallax is invisible but is orders of magnitude above the rounding
+	 * noise, so the ordering is decided by a real margin. Depth write is off and the fill only moves
+	 * nearer, so the depth test is unaffected.
+	 */
+	private static final double FILL_SORT_BIAS = 0.002;
+
 	private IndicatorRenderer() {
 	}
 
@@ -56,7 +71,8 @@ public final class IndicatorRenderer {
 		double halfHeight = config.barHeight / 200.0;
 		double clearance = config.headClearance / 100.0;
 
-		float partialTick = mc.getDeltaTracker().getGameTimeDeltaPartialTick(false);
+		// true matches what vanilla resolves to for a Player: the frozen-tick flag never applies to them.
+		float partialTick = mc.getDeltaTracker().getGameTimeDeltaPartialTick(true);
 		Matrix4f matrix = poseStack.last().pose();
 
 		// debugQuads() is POSITION_COLOR quads, translucent, with no depth write and no back-face
@@ -78,11 +94,17 @@ public final class IndicatorRenderer {
 			double x = Mth.lerp(partialTick, player.xo, player.getX());
 			double y = Mth.lerp(partialTick, player.yo, player.getY());
 			double z = Mth.lerp(partialTick, player.zo, player.getZ());
-			Vec3 center = new Vec3(x, y + player.getBbHeight() + clearance, z).subtract(camPos);
+			double height = DirectionIndicatorClient.interpolatedHeight(player, partialTick);
+			Vec3 center = new Vec3(x, y + height + clearance, z).subtract(camPos);
+
+			// The camera sits at the origin here, so "toward the camera" is simply toward the origin.
+			Vec3 fillCenter = center.lengthSqr() > 1.0E-6
+					? center.subtract(center.normalize().scale(FILL_SORT_BIAS))
+					: center;
 
 			quad(buffer, matrix, center, right, up,
 					halfWidth + BORDER, halfHeight + BORDER, 0x000000, config.backdropOpacity);
-			quad(buffer, matrix, center, right, up,
+			quad(buffer, matrix, fillCenter, right, up,
 					halfWidth, halfHeight, DirectionIndicatorClient.indicatorColor(player), config.fillOpacity);
 		}
 	}

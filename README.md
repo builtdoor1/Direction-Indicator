@@ -43,7 +43,7 @@ Both features use the same radius, 24 blocks by default.
 
 1. [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.3 or newer, for Minecraft 1.21.11.
 2. [Fabric API](https://modrinth.com/mod/fabric-api).
-3. Drop `direction-indicator-1.2.0.jar` from [Releases](https://github.com/builtdoor1/Direction-Indicator/releases) into your `mods` folder.
+3. Drop `direction-indicator-1.2.1.jar` from [Releases](https://github.com/builtdoor1/Direction-Indicator/releases) into your `mods` folder.
 
 Java 21 is required, which is what the 1.21.11 launcher already uses.
 
@@ -106,6 +106,14 @@ tick therefore misses other people's jumps. Instead, leaving the ground arms a s
 window, and the cue fires once the player has actually gained height while still airborne. That
 is instant for you, tolerant of interpolation for everyone else, and still rejects walking off a
 ledge, where height only ever decreases.
+
+**Why the fill is nudged toward the camera.** `RenderTypes.debugQuads()` is declared
+`sortOnUpload()`, so the world renderer re-sorts that whole batch back-to-front by quad centroid
+every frame. The bar's dark backdrop and coloured fill are coplanar and their centroids are derived
+identically, so the sort key was an exact tie, broken arbitrarily by float rounding. The coordinates
+are camera-relative, so that rounding changed every frame anything moved, and on a fraction of frames
+the backdrop sorted last and composited over the fill. The bar visibly flickered, but only while
+moving. Pulling the fill 2 mm nearer the camera decides the order by a real margin instead.
 
 **The cue is mono on purpose.** Minecraft only applies 3D positional attenuation to mono sounds; a
 stereo file plays at flat volume regardless of where the emitter is. Since the whole value of the cue
